@@ -1,0 +1,96 @@
+---
+title: "Practical Machine Learning Course Project"
+author: "AndrewP"
+date: "December 22, 2015"
+output: html_document
+---
+
+# Intro and Background
+The goal of this project is to predict in what manner an exercised was performed, based on accelerometer data from a personal activity monitor.  
+
+Background on the project from assignment page: "Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset)."
+
+The following Libraries are required:
+```{r}
+library(caret)
+library(rpart)
+library(randomForest)
+```
+
+# Data Sources
+The data is available at the folloing websites:
+Training: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+Testing: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r}
+# read the data from the csv and store it in train and test variables
+train <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"), na.strings=c("NA",""), header=TRUE)
+test <- read.csv(url("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"), na.strings=c("NA",""), header=TRUE)
+
+```
+
+For reproducibility, I set the seed before splitting the train data into a training and cross validation data set.
+
+```{r}
+set.seed(123)
+inTrain <- createDataPartition(train$classe, p=0.7, list = FALSE)
+training <- train[inTrain, ]; crossVal <- train[-inTrain, ]
+```
+
+# Data cleaning and preprocessing
+To prepare the data for prediction, some cleaning and preprocessing was needed. Predictors with near-zero variance, non-predictive values, and predictors that have greater than 40 NA's were removed. The same data cleaning was then applied to the cross validation and test sets.
+```{r}
+# remove columns with near zero variance
+nsv <- nearZeroVar(training)
+training <- training[, -nsv]
+
+#remove the first two columns (row number and name) as they are not predictive
+training <- training[c(-1,-2)]
+
+# remove any columns that have more than 40 NA values
+training <- training[colSums(is.na(training))<40]
+
+# copy all preprocessing done to the training set to the cross validation and test data
+# sets.  In test, exclude the "classe" column and include "problem_id"
+crossVal <- crossVal[colnames(training)]
+test <- test[c(colnames(training[,-57]),"problem_id")]
+
+```
+
+
+# RPart Model
+The first model fit is a decision tree. 
+```{r}
+modFit1 <- rpart(classe~., data = training, method = "class")
+plot(modFit1, uniform = TRUE, main = "Classification Tree")
+text(modFit1, use.n = TRUE, all = TRUE, cex=.8)
+```
+
+Predictions from this model are made on the cross validation data set, and the accuracy of the model is determined using a confusion matrix
+```{r}
+predictions1 <- predict(modFit1, crossVal, type = "class")
+confusionMatrix(predictions1, crossVal$classe)
+```
+
+The accuracy is .8579, which gives an out of sample error rate of .1421
+
+# Random Forest
+A random forest model should give better accuracy.
+```{r}
+modFit2 <- train(classe~., data = training, method = "rf", ntree = 10)
+predictions2 <- predict(modFit2, crossVal)
+confusionMatrix(predictions2, crossVal$classe)
+```
+
+The classification tree from the random forest:
+```{r}
+plot(modFit1, uniform = TRUE, main = "Classification Tree")
+text(modFit1, use.n = TRUE, all = TRUE, cex=.8)
+```
+
+The new accuracy is .9983, giving an out of sample error rate of 0.0017.  This is the model that will be used to predict for the test data.
+
+```{r}
+answers <- predict(modFit2, newdata = test)
+print(answers)
+```
